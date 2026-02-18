@@ -400,8 +400,9 @@ static esp_err_t tavily_search_via_proxy(const char *query, search_buf_t *sb)
 
 esp_err_t tool_web_search_execute(const char *input_json, char *output, size_t output_size)
 {
-    if (s_search_key[0] == '\0') {
-        snprintf(output, output_size, "Error: No search API key configured. Set MIMI_SECRET_SEARCH_KEY in mimi_secrets.h");
+    if (s_provider == SEARCH_PROVIDER_NONE) {
+        snprintf(output, output_size,
+                 "Error: No search API key configured. Set MIMI_SECRET_TAVILY_KEY or MIMI_SECRET_SEARCH_KEY in mimi_secrets.h");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -421,14 +422,12 @@ esp_err_t tool_web_search_execute(const char *input_json, char *output, size_t o
 
     ESP_LOGI(TAG, "Searching: %s", query->valuestring);
 
-    /* Build URL */
+    /* Build URL/query fields */
     char encoded_query[256];
     url_encode(query->valuestring, encoded_query, sizeof(encoded_query));
+    char query_copy[256];
+    snprintf(query_copy, sizeof(query_copy), "%s", query->valuestring);
     cJSON_Delete(input);
-
-    char path[384];
-    snprintf(path, sizeof(path),
-             "/res/v1/web/search?q=%s&count=%d", encoded_query, SEARCH_RESULT_COUNT);
 
     /* Allocate response buffer from PSRAM */
     search_buf_t sb = {0};
@@ -441,12 +440,23 @@ esp_err_t tool_web_search_execute(const char *input_json, char *output, size_t o
 
     /* Make HTTP request */
     esp_err_t err;
-    if (http_proxy_is_enabled()) {
-        err = search_via_proxy(path, &sb);
+    if (s_provider == SEARCH_PROVIDER_TAVILY) {
+        if (http_proxy_is_enabled()) {
+            err = tavily_search_via_proxy(query_copy, &sb);
+        } else {
+            err = tavily_search_direct(query_copy, &sb);
+        }
     } else {
-        char url[512];
-        snprintf(url, sizeof(url), "https://api.search.brave.com%s", path);
-        err = search_direct(url, &sb);
+        char path[384];
+        snprintf(path, sizeof(path),
+                 "/res/v1/web/search?q=%s&count=%d", encoded_query, SEARCH_RESULT_COUNT);
+        if (http_proxy_is_enabled()) {
+            err = brave_search_via_proxy(path, &sb);
+        } else {
+            char url[512];
+            snprintf(url, sizeof(url), "https://api.search.brave.com%s", path);
+            err = brave_search_direct(url, &sb);
+        }
     }
 
     if (err != ESP_OK) {
@@ -464,7 +474,11 @@ esp_err_t tool_web_search_execute(const char *input_json, char *output, size_t o
         return ESP_FAIL;
     }
 
-    format_results(root, output, output_size);
+    if (s_provider == SEARCH_PROVIDER_TAVILY) {
+        format_tavily_results(root, output, output_size);
+    } else {
+        format_results(root, output, output_size);
+    }
     cJSON_Delete(root);
 
     ESP_LOGI(TAG, "Search complete, %d bytes result", (int)strlen(output));
@@ -479,7 +493,24 @@ esp_err_t tool_web_search_set_key(const char *api_key)
     ESP_ERROR_CHECK(nvs_commit(nvs));
     nvs_close(nvs);
 
-    strncpy(s_search_key, api_key, sizeof(s_search_key) - 1);
+    strncpy(s_brave_key, api_key, sizeof(s_brave_key) - 1);
+    if (s_provider == SEARCH_PROVIDER_NONE) {
+        s_provider = SEARCH_PROVIDER_BRAVE;
+    }
     ESP_LOGI(TAG, "Search API key saved");
+    return ESP_OK;
+}
+
+esp_err_t tool_web_search_set_tavily_key(const char *api_key)
+{
+    nvs_handle_t nvs;
+    ESP_ERROR_CHECK(nvs_open(MIMI_NVS_SEARCH, NVS_READWRITE, &nvs));
+    ESP_ERROR_CHECK(nvs_set_str(nvs, MIMI_NVS_KEY_TAVILY_KEY, api_key));
+    ESP_ERROR_CHECK(nvs_commit(nvs));
+    nvs_close(nvs);
+
+    strncpy(s_tavily_key, api_key, sizeof(s_tavily_key) - 1);
+    s_provider = SEARCH_PROVIDER_TAVILY;
+    ESP_LOGI(TAG, "Tavily API key saved");
     return ESP_OK;
 }
