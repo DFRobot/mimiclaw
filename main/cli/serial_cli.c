@@ -1,7 +1,8 @@
 #include "serial_cli.h"
 #include "mimi_config.h"
 #include "wifi/wifi_manager.h"
-#include "telegram/telegram_bot.h"
+#include "channels/telegram/telegram_bot.h"
+#include "channels/feishu/feishu_bot.h"
 #include "llm/llm_proxy.h"
 #include "memory/memory_store.h"
 #include "memory/session_mgr.h"
@@ -70,6 +71,47 @@ static int cmd_set_tg_token(int argc, char **argv)
     telegram_set_token(tg_token_args.token->sval[0]);
     printf("Telegram bot token saved.\n");
     return 0;
+}
+
+/* --- set_feishu_creds command --- */
+static struct {
+    struct arg_str *app_id;
+    struct arg_str *app_secret;
+    struct arg_end *end;
+} feishu_creds_args;
+
+/* --- feishu_send command --- */
+static struct {
+    struct arg_str *receive_id;
+    struct arg_str *text;
+    struct arg_end *end;
+} feishu_send_args;
+
+static int cmd_set_feishu_creds(int argc, char **argv)
+{
+    int nerrors = arg_parse(argc, argv, (void **)&feishu_creds_args);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, feishu_creds_args.end, argv[0]);
+        return 1;
+    }
+    feishu_set_credentials(feishu_creds_args.app_id->sval[0],
+                          feishu_creds_args.app_secret->sval[0]);
+    printf("Feishu credentials saved.\n");
+    return 0;
+}
+
+static int cmd_feishu_send(int argc, char **argv)
+{
+    int nerrors = arg_parse(argc, argv, (void **)&feishu_send_args);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, feishu_send_args.end, argv[0]);
+        return 1;
+    }
+
+    esp_err_t err = feishu_send_message(feishu_send_args.receive_id->sval[0],
+                                        feishu_send_args.text->sval[0]);
+    printf("feishu_send status: %s\n", esp_err_to_name(err));
+    return (err == ESP_OK) ? 0 : 1;
 }
 
 /* --- set_api_key command --- */
@@ -618,6 +660,30 @@ esp_err_t serial_cli_init(void)
         .argtable = &tg_token_args,
     };
     esp_console_cmd_register(&tg_token_cmd);
+
+    /* set_feishu_creds */
+    feishu_creds_args.app_id = arg_str1(NULL, NULL, "<app_id>", "Feishu App ID");
+    feishu_creds_args.app_secret = arg_str1(NULL, NULL, "<app_secret>", "Feishu App Secret");
+    feishu_creds_args.end = arg_end(2);
+    esp_console_cmd_t feishu_creds_cmd = {
+        .command = "set_feishu_creds",
+        .help = "Set Feishu app credentials (app_id app_secret)",
+        .func = &cmd_set_feishu_creds,
+        .argtable = &feishu_creds_args,
+    };
+    esp_console_cmd_register(&feishu_creds_cmd);
+
+    /* feishu_send */
+    feishu_send_args.receive_id = arg_str1(NULL, NULL, "<receive_id>", "Feishu open_id/chat_id");
+    feishu_send_args.text = arg_str1(NULL, NULL, "<text>", "Text message (quote if contains spaces)");
+    feishu_send_args.end = arg_end(2);
+    esp_console_cmd_t feishu_send_cmd = {
+        .command = "feishu_send",
+        .help = "Send Feishu text: feishu_send <open_id|chat_id> \"hello\"",
+        .func = &cmd_feishu_send,
+        .argtable = &feishu_send_args,
+    };
+    esp_console_cmd_register(&feishu_send_cmd);
 
     /* set_api_key */
     api_key_args.key = arg_str1(NULL, NULL, "<key>", "LLM API key");
