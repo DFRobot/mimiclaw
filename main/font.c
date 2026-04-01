@@ -383,7 +383,7 @@ static void detect_glyph_stride_from_blob(const uint8_t *blob, size_t blob_len, 
         if (bw16 >= 1 && bw16 <= 256 && bh16 >= 1 && bh16 <= 256) {
             score16++;
         }
-        if (bw8 >= 1 && bw8 <= 255 && bh8 >= 1 && bh8 <= 255) {
+        if (bw8 >= 1 && bh8 >= 1) {
             score8++;
         }
     }

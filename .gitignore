@@ -5,7 +5,6 @@ tmp/
 releases/
 
 # ESP-IDF
-sdkconfig
 sdkconfig.old
 dependencies.lock
 components/
