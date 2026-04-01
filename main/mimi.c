@@ -26,13 +26,22 @@
 #include "heartbeat/heartbeat.h"
 #include "skills/skill_loader.h"
 #include "onboard/wifi_onboard.h"
-
+#include "k10_ui/data/device_data.h"
+#include "k10_ui/data/device_data_json.h"
+#include "circular_strip.h"
+#include "lcd.h"
+#include "tfcard.h"
 static const char *TAG = "mimi";
+
+#define FEISHU_USE
+//#define TELEGRAM_USE
+//#define QQ_USE
 
 static esp_err_t init_nvs(void)
 {
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
         ESP_LOGW(TAG, "NVS partition truncated, erasing...");
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
@@ -40,61 +49,57 @@ static esp_err_t init_nvs(void)
     return ret;
 }
 
-static esp_err_t init_spiffs(void)
-{
-    esp_vfs_spiffs_conf_t conf = {
-        .base_path = MIMI_SPIFFS_BASE,
-        .partition_label = NULL,
-        .max_files = 10,
-        .format_if_mount_failed = true,
-    };
-
-    esp_err_t ret = esp_vfs_spiffs_register(&conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SPIFFS mount failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    size_t total = 0, used = 0;
-    esp_spiffs_info(NULL, &total, &used);
-    ESP_LOGI(TAG, "SPIFFS: total=%d, used=%d", (int)total, (int)used);
-
-    return ESP_OK;
-}
-
 /* Outbound dispatch task: reads from outbound queue and routes to channels */
 static void outbound_dispatch_task(void *arg)
 {
     ESP_LOGI(TAG, "Outbound dispatch started");
 
-    while (1) {
+    while (1)
+    {
         mimi_msg_t msg;
-        if (message_bus_pop_outbound(&msg, UINT32_MAX) != ESP_OK) continue;
+        if (message_bus_pop_outbound(&msg, UINT32_MAX) != ESP_OK)
+            continue;
 
         ESP_LOGI(TAG, "Dispatching response to %s:%s", msg.channel, msg.chat_id);
 
-        if (strcmp(msg.channel, MIMI_CHAN_TELEGRAM) == 0) {
+        if (strcmp(msg.channel, MIMI_CHAN_TELEGRAM) == 0)
+        {
             esp_err_t send_err = telegram_send_message(msg.chat_id, msg.content);
-            if (send_err != ESP_OK) {
+            if (send_err != ESP_OK)
+            {
                 ESP_LOGE(TAG, "Telegram send failed for %s: %s", msg.chat_id, esp_err_to_name(send_err));
-            } else {
+            }
+            else
+            {
                 ESP_LOGI(TAG, "Telegram send success for %s (%d bytes)", msg.chat_id, (int)strlen(msg.content));
             }
-        } else if (strcmp(msg.channel, MIMI_CHAN_FEISHU) == 0) {
+        }
+        else if (strcmp(msg.channel, MIMI_CHAN_FEISHU) == 0)
+        {
             esp_err_t send_err = feishu_send_message(msg.chat_id, msg.content);
-            if (send_err != ESP_OK) {
+            if (send_err != ESP_OK)
+            {
                 ESP_LOGE(TAG, "Feishu send failed for %s: %s", msg.chat_id, esp_err_to_name(send_err));
-            } else {
+            }
+            else
+            {
                 ESP_LOGI(TAG, "Feishu send success for %s (%d bytes)", msg.chat_id, (int)strlen(msg.content));
             }
-        } else if (strcmp(msg.channel, MIMI_CHAN_WEBSOCKET) == 0) {
+        }
+        else if (strcmp(msg.channel, MIMI_CHAN_WEBSOCKET) == 0)
+        {
             esp_err_t ws_err = ws_server_send(msg.chat_id, msg.content);
-            if (ws_err != ESP_OK) {
+            if (ws_err != ESP_OK)
+            {
                 ESP_LOGW(TAG, "WS send failed for %s: %s", msg.chat_id, esp_err_to_name(ws_err));
             }
-        } else if (strcmp(msg.channel, MIMI_CHAN_SYSTEM) == 0) {
+        }
+        else if (strcmp(msg.channel, MIMI_CHAN_SYSTEM) == 0)
+        {
             ESP_LOGI(TAG, "System message [%s]: %.128s", msg.chat_id, msg.content);
-        } else {
+        }
+        else
+        {
             ESP_LOGW(TAG, "Unknown channel: %s", msg.channel);
         }
 
@@ -103,7 +108,7 @@ static void outbound_dispatch_task(void *arg)
 }
 
 void app_main(void)
-{
+{ /* Allow time for logs to flush */
     /* Silence noisy components */
     esp_log_level_set("esp-x509-crt-bundle", ESP_LOG_WARN);
 
@@ -120,7 +125,11 @@ void app_main(void)
     /* Phase 1: Core infrastructure */
     ESP_ERROR_CHECK(init_nvs());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(init_spiffs());
+    device_data_init();
+    device_data_add_agent(AGENT_MIMICLAW, "mimiclaw", ALONG_TO_LOCAL, TYPE_WORKING);
+
+    tfcard_init();
+    lvgl_main();
 
     /* Initialize subsystems */
     ESP_ERROR_CHECK(message_bus_init());
@@ -129,13 +138,26 @@ void app_main(void)
     ESP_ERROR_CHECK(session_mgr_init());
     ESP_ERROR_CHECK(wifi_manager_init());
     ESP_ERROR_CHECK(http_proxy_init());
-    ESP_ERROR_CHECK(telegram_bot_init());
-    ESP_ERROR_CHECK(feishu_bot_init());
     ESP_ERROR_CHECK(llm_proxy_init());
     ESP_ERROR_CHECK(tool_registry_init());
     ESP_ERROR_CHECK(cron_service_init());
     ESP_ERROR_CHECK(heartbeat_init());
     ESP_ERROR_CHECK(agent_loop_init());
+    
+#ifdef FEISHU_USE
+    device_data_add_channel(CHANNEL_FEISHU, "feishu", ALONG_TO_LOCAL);
+    ESP_ERROR_CHECK(feishu_bot_init());
+#endif
+    
+#ifdef TELEGRAM_USE
+    device_data_add_channel(CHANNEL_TELEGRAM, "Telegram", ALONG_TO_LOCAL);
+    ESP_ERROR_CHECK(telegram_bot_init());
+#endif
+    
+#ifdef QQ_USE
+    device_data_add_channel(CHANNEL_QQ, "QQ", ALONG_TO_LOCAL);
+    ESP_ERROR_CHECK(qq_bot_init());
+#endif
 
     /* Start Serial CLI first (works without WiFi) */
     ESP_ERROR_CHECK(serial_cli_init());
@@ -143,42 +165,65 @@ void app_main(void)
     /* Start WiFi */
     esp_err_t wifi_err = wifi_manager_start();
     bool wifi_ok = false;
-    if (wifi_err == ESP_OK) {
+    if (wifi_err == ESP_OK)
+    {
         ESP_LOGI(TAG, "Scanning nearby APs on boot...");
         wifi_manager_scan_and_print();
         ESP_LOGI(TAG, "Waiting for WiFi connection...");
-        if (wifi_manager_wait_connected(30000) == ESP_OK) {
+        if (wifi_manager_wait_connected(30000) == ESP_OK)
+        {
             wifi_ok = true;
             ESP_LOGI(TAG, "WiFi connected: %s", wifi_manager_get_ip());
-        } else {
+        }
+        else
+        {
             ESP_LOGW(TAG, "WiFi connection timeout");
         }
-    } else {
+    }
+    else
+    {
         ESP_LOGW(TAG, "No WiFi credentials configured");
     }
 
-    if (!wifi_ok) {
+    if (!wifi_ok)
+    {
         ESP_LOGW(TAG, "Entering WiFi onboarding mode...");
-        wifi_onboard_start(WIFI_ONBOARD_MODE_CAPTIVE);  /* blocks, restarts on success */
-        return;  /* unreachable */
+        wifi_onboard_start(WIFI_ONBOARD_MODE_CAPTIVE); /* blocks, restarts on success */
+        return;                                        /* unreachable */
     }
 
-    if (wifi_onboard_start(WIFI_ONBOARD_MODE_ADMIN) != ESP_OK) {
+    if (wifi_onboard_start(WIFI_ONBOARD_MODE_ADMIN) != ESP_OK)
+    {
         ESP_LOGW(TAG, "Local admin portal unavailable; continuing without config hotspot");
     }
 
     {
         /* Outbound dispatch task should start first to avoid dropping early replies. */
         ESP_ERROR_CHECK((xTaskCreatePinnedToCore(
-            outbound_dispatch_task, "outbound",
-            MIMI_OUTBOUND_STACK, NULL,
-            MIMI_OUTBOUND_PRIO, NULL, MIMI_OUTBOUND_CORE) == pdPASS)
-            ? ESP_OK : ESP_FAIL);
+                             outbound_dispatch_task, "outbound",
+                             MIMI_OUTBOUND_STACK, NULL,
+                             MIMI_OUTBOUND_PRIO, NULL, MIMI_OUTBOUND_CORE) == pdPASS)
+                            ? ESP_OK
+                            : ESP_FAIL);
 
         /* Start network-dependent services */
         ESP_ERROR_CHECK(agent_loop_start());
-        ESP_ERROR_CHECK(telegram_bot_start());
+        ESP_LOGI(TAG, "Before feishu: Internal=%d PSRAM=%d",
+                 (int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+#ifdef FEISHU_USE
         ESP_ERROR_CHECK(feishu_bot_start());
+#endif
+        
+#ifdef TELEGRAM_USE
+        ESP_ERROR_CHECK(telegram_bot_start());
+#endif
+        
+#ifdef QQ_USE
+        ESP_ERROR_CHECK(qq_bot_start());
+#endif
+        
         cron_service_start();
         heartbeat_start();
         ESP_ERROR_CHECK(ws_server_start());

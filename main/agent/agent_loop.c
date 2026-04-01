@@ -18,6 +18,9 @@ static const char *TAG = "agent";
 
 #define TOOL_OUTPUT_SIZE  (8 * 1024)
 
+/* Xtensa FreeRTOS expects stack start aligned to portBYTE_ALIGNMENT (16). */
+#define AGENT_STACK_ALIGN 16
+
 /* Build the assistant content array from llm_response_t for the messages history.
  * Returns a cJSON array with text and tool_use blocks. */
 static cJSON *build_assistant_content(const llm_response_t *resp)
@@ -331,32 +334,37 @@ esp_err_t agent_loop_init(void)
 
 esp_err_t agent_loop_start(void)
 {
-    const uint32_t stack_candidates[] = {
-        MIMI_AGENT_STACK,
-        20 * 1024,
-        16 * 1024,
-        14 * 1024,
-        12 * 1024,
-    };
-
-    for (size_t i = 0; i < (sizeof(stack_candidates) / sizeof(stack_candidates[0])); i++) {
-        uint32_t stack_size = stack_candidates[i];
-        BaseType_t ret = xTaskCreatePinnedToCore(
-            agent_loop_task, "agent_loop",
-            stack_size, NULL,
-            MIMI_AGENT_PRIO, NULL, MIMI_AGENT_CORE);
-
-        if (ret == pdPASS) {
-            ESP_LOGI(TAG, "agent_loop task created with stack=%u bytes", (unsigned)stack_size);
-            return ESP_OK;
-        }
-
-        ESP_LOGW(TAG,
-                 "agent_loop create failed (stack=%u, free_internal=%u, largest_internal=%u), retrying...",
-                 (unsigned)stack_size,
-                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    static TaskHandle_t s_agent_loop_task = NULL;
+    if (s_agent_loop_task != NULL) {
+        ESP_LOGW(TAG, "agent_loop task already running");
+        return ESP_OK;
     }
 
-    return ESP_FAIL;
+    StackType_t *xStack = (StackType_t *)heap_caps_aligned_alloc(
+        AGENT_STACK_ALIGN, MIMI_AGENT_STACK, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!xStack) {
+        ESP_LOGE(TAG, "PSRAM stack alloc failed (%u bytes)", (unsigned)MIMI_AGENT_STACK);
+        return ESP_ERR_NO_MEM;
+    }
+
+    static StaticTask_t xTaskBuffer;
+    s_agent_loop_task = xTaskCreateStaticPinnedToCore(
+        agent_loop_task,
+        "agent_loop",
+        MIMI_AGENT_STACK,
+        NULL,
+        MIMI_AGENT_PRIO,
+        xStack,
+        &xTaskBuffer,
+        MIMI_AGENT_CORE);
+
+    if (s_agent_loop_task == NULL) {
+        heap_caps_free(xStack);
+        ESP_LOGE(TAG, "xTaskCreateStaticPinnedToCore failed");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "agent_loop on core %d, PSRAM stack=%u bytes",
+             MIMI_AGENT_CORE, (unsigned)MIMI_AGENT_STACK);
+    return ESP_OK;
 }

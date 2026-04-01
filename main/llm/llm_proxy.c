@@ -230,11 +230,11 @@ esp_err_t llm_proxy_init(void)
         if (nvs_get_str(nvs, MIMI_NVS_KEY_MODEL, model_tmp, &len) == ESP_OK && model_tmp[0]) {
             safe_copy(s_model, sizeof(s_model), model_tmp);
         }
-        char provider_tmp[16] = {0};
-        len = sizeof(provider_tmp);
-        if (nvs_get_str(nvs, MIMI_NVS_KEY_PROVIDER, provider_tmp, &len) == ESP_OK && provider_tmp[0]) {
-            safe_copy(s_provider, sizeof(s_provider), provider_tmp);
-        }
+        // char provider_tmp[16] = {0};
+        // len = sizeof(provider_tmp);
+        // if (nvs_get_str(nvs, MIMI_NVS_KEY_PROVIDER, provider_tmp, &len) == ESP_OK && provider_tmp[0]) {
+        //     safe_copy(s_provider, sizeof(s_provider), provider_tmp);
+        // }
         nvs_close(nvs);
     }
 

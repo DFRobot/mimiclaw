@@ -5,6 +5,8 @@
 #include "tools/tool_files.h"
 #include "tools/tool_cron.h"
 #include "tools/tool_gpio.h"
+#include "tools/tool_ws2812.h"
+#include "tools/tool_notice.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -12,7 +14,7 @@
 
 static const char *TAG = "tools";
 
-#define MAX_TOOLS 16
+#define MAX_TOOLS 20
 
 static mimi_tool_t s_tools[MAX_TOOLS];
 static int s_tool_count = 0;
@@ -213,6 +215,106 @@ esp_err_t tool_registry_init(void)
         .execute = tool_gpio_read_all_execute,
     };
     register_tool(&ga);
+
+    /* Register WS2812 LED strip tools */
+    tool_ws2812_init();
+
+    mimi_tool_t wi = {
+        .name = "ws2812_init",
+        .description = "Initialize WS2812 LED strip. Must be called before other WS2812 functions. Default: GPIO 46, LED count 3.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"gpio\":{\"type\":\"integer\",\"description\":\"GPIO pin number connected to WS2812 (default: 46)\"},"
+            "\"led_count\":{\"type\":\"integer\",\"description\":\"Number of LEDs in the strip (default: 3)\"}},"
+            "\"required\":[]}",
+        .execute = tool_ws2812_init_execute,
+    };
+    register_tool(&wi);
+
+    mimi_tool_t wsp = {
+        .name = "ws2812_set_pixel",
+        .description = "Set a single LED pixel to RGB color. Index is 0-based.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"LED index (0-based)\"},"
+            "\"r\":{\"type\":\"integer\",\"description\":\"Red component (0-255)\"},"
+            "\"g\":{\"type\":\"integer\",\"description\":\"Green component (0-255)\"},"
+            "\"b\":{\"type\":\"integer\",\"description\":\"Blue component (0-255)\"}},"
+            "\"required\":[\"index\",\"r\",\"g\",\"b\"]}",
+        .execute = tool_ws2812_set_pixel_execute,
+    };
+    register_tool(&wsp);
+
+    mimi_tool_t wsa = {
+        .name = "ws2812_set_all",
+        .description = "Set all LEDs to the same RGB color.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"r\":{\"type\":\"integer\",\"description\":\"Red component (0-255)\"},"
+            "\"g\":{\"type\":\"integer\",\"description\":\"Green component (0-255)\"},"
+            "\"b\":{\"type\":\"integer\",\"description\":\"Blue component (0-255)\"}},"
+            "\"required\":[\"r\",\"g\",\"b\"]}",
+        .execute = tool_ws2812_set_all_execute,
+    };
+    register_tool(&wsa);
+
+    mimi_tool_t wflush = {
+        .name = "ws2812_flush",
+        .description = "Flush LED buffer to display. Note: in this implementation colors are applied immediately.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{},"
+            "\"required\":[]}",
+        .execute = tool_ws2812_flush_execute,
+    };
+    register_tool(&wflush);
+
+    mimi_tool_t wc = {
+        .name = "ws2812_clear",
+        .description = "Turn off all LEDs (set all to black).",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{},"
+            "\"required\":[]}",
+        .execute = tool_ws2812_clear_execute,
+    };
+    register_tool(&wc);
+
+    /* Register notice message tools */
+    tool_notice_init();
+
+    mimi_tool_t na = {
+        .name = "notice_add",
+        .description = "Add a new notice message. Maximum 3 messages, oldest is removed when full.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"message\":{\"type\":\"string\",\"description\":\"Notice message text\"}},"
+            "\"required\":[\"message\"]}",
+        .execute = tool_notice_add_execute,
+    };
+    register_tool(&na);
+
+    mimi_tool_t nc = {
+        .name = "notice_clear",
+        .description = "Clear all notice messages.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{},"
+            "\"required\":[]}",
+        .execute = tool_notice_clear_execute,
+    };
+    register_tool(&nc);
+
+    mimi_tool_t nd = {
+        .name = "notice_del",
+        .description = "Delete a notice message by position (1=first, 2=second, 3=third).",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"Message position to delete (1=first, 2=second, 3=third)\"}},"
+            "\"required\":[\"index\"]}",
+        .execute = tool_notice_del_execute,
+    };
+    register_tool(&nd);
 
     build_tools_json();
 

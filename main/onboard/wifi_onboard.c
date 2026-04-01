@@ -2,6 +2,7 @@
 #include "onboard_html.h"
 #include "mimi_config.h"
 #include "wifi/wifi_manager.h"
+#include "k10_ui/data/device_data_json.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -372,6 +373,79 @@ static esp_err_t http_post_save(httpd_req_t *req)
     return ESP_OK;  /* unreachable */
 }
 
+static esp_err_t http_post_device_data(httpd_req_t *req)
+{
+    char remote_ip[46] = {0}; // 足够容纳 IPv6 或 IPv4
+    struct sockaddr_storage addr; // 必须使用 storage，否则 getpeername 会溢出覆盖栈数据
+    socklen_t addr_len = sizeof(addr);
+    int sockfd = httpd_req_to_sockfd(req);
+
+    if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_len) == 0) {
+        
+        // 情况 A: 纯 IPv4 连接 (family == 2)
+        if (addr.ss_family == AF_INET) {
+            struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+            inet_ntoa_r(s->sin_addr, remote_ip, sizeof(remote_ip));
+        } 
+        
+        // 情况 B: IPv6 或 IPv4-Mapped 连接 (family == 10)
+        else if (addr.ss_family == AF_INET6) {
+            struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&addr;
+            
+            // 检查是否是 IPv4-Mapped IPv6 (前 12 字节为 00...00FFFF)
+            // IPv6 地址中的最后 4 个字节 [12, 13, 14, 15] 就是真实的 IPv4 地址
+            if (memcmp(s6->sin6_addr.s6_addr, "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff", 12) == 0) {
+                uint8_t *v4 = &s6->sin6_addr.s6_addr[12];
+                snprintf(remote_ip, sizeof(remote_ip), "%d.%d.%d.%d", v4[0], v4[1], v4[2], v4[3]);
+            } else {
+                // 真正的原生 IPv6 地址
+                inet_ntop(AF_INET6, &s6->sin6_addr, remote_ip, sizeof(remote_ip));
+            }
+        }
+    } else {
+        strncpy(remote_ip, "unknown", sizeof(remote_ip) - 1);
+    }
+
+    int total_len = req->content_len;
+    if (total_len <= 0 || total_len > 2048) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad length");
+        return ESP_FAIL;
+    }
+
+    char *buf = calloc(1, total_len + 1);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
+        return ESP_FAIL;
+    }
+
+    int received = 0;
+    while (received < total_len) {
+        int ret = httpd_req_recv(req, buf + received, total_len - received);
+        if (ret <= 0) {
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Recv error");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+
+    esp_err_t ret = device_data_json_parse_and_update(buf);
+    ESP_LOGI(TAG, "POST /status from %s, body: %s", remote_ip, buf);
+    free(buf);
+
+    if (ret == ESP_OK) {
+        device_data_set_last_post_ip(remote_ip);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"status\":\"success\"}", 20);
+        ESP_LOGI(TAG, "Device data updated successfully from %s", remote_ip);
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON or agent");
+        ESP_LOGE(TAG, "Failed to update device data: %s", esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
 /* ── Soft AP + HTTP server startup ──────────────────────────────── */
 
 static esp_err_t start_softap(bool keep_sta)
@@ -454,6 +528,11 @@ static httpd_handle_t start_http_server(bool captive)
         .uri = "/save", .method = HTTP_POST, .handler = http_post_save,
     };
     httpd_register_uri_handler(s_server, &uri_save);
+
+    httpd_uri_t uri_device_data = {
+        .uri = "/status", .method = HTTP_POST, .handler = http_post_device_data,
+    };
+    httpd_register_uri_handler(s_server, &uri_device_data);
 
     if (captive) {
         /* Captive portal detection endpoints */

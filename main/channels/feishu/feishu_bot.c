@@ -2,6 +2,7 @@
 #include "mimi_config.h"
 #include "bus/message_bus.h"
 #include "proxy/http_proxy.h"
+#include "k10_ui/data/device_data.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -580,9 +581,17 @@ static void feishu_ws_event_handler(void *arg, esp_event_base_t base, int32_t ev
     if (event_id == WEBSOCKET_EVENT_CONNECTED) {
         s_ws_connected = true;
         ESP_LOGI(TAG, "Feishu WS connected");
+        int idx = device_data_find_channel("feishu");
+        if (idx >= 0) {
+            device_data_update_channel_state(idx, CHANNEL_STATE_CONNECTED);
+        }
     } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
         s_ws_connected = false;
         ESP_LOGW(TAG, "Feishu WS disconnected");
+        int idx = device_data_find_channel("feishu");
+        if (idx >= 0) {
+            device_data_update_channel_state(idx, CHANNEL_STATE_OFFLINE);
+        }
     } else if (event_id == WEBSOCKET_EVENT_DATA) {
         if (e->op_code != WS_TRANSPORT_OPCODES_BINARY) return;
         size_t need = e->payload_offset + e->data_len;
@@ -826,19 +835,33 @@ esp_err_t feishu_bot_start(void)
         ESP_LOGW(TAG, "Feishu WebSocket task already running");
         return ESP_OK;
     }
-    BaseType_t ok = xTaskCreatePinnedToCore(
+
+    StackType_t *xStack = (StackType_t *)heap_caps_aligned_alloc(
+        16, MIMI_FEISHU_POLL_STACK, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!xStack) {
+        ESP_LOGE(TAG, "PSRAM stack alloc failed (%u bytes)", (unsigned)MIMI_FEISHU_POLL_STACK);
+        return ESP_ERR_NO_MEM;
+    }
+
+    static StaticTask_t xTaskBuffer;
+    s_ws_task = xTaskCreateStaticPinnedToCore(
         feishu_ws_task,
         "feishu_ws",
         MIMI_FEISHU_POLL_STACK,
         NULL,
         MIMI_FEISHU_POLL_PRIO,
-        &s_ws_task,
+        xStack,
+        &xTaskBuffer,
         MIMI_FEISHU_POLL_CORE);
-    if (ok != pdPASS) {
-        s_ws_task = NULL;
+
+    if (s_ws_task == NULL) {
+        heap_caps_free(xStack);
+        ESP_LOGE(TAG, "xTaskCreateStaticPinnedToCore failed");
         return ESP_FAIL;
     }
-    ESP_LOGI(TAG, "Feishu WebSocket mode enabled");
+
+    ESP_LOGI(TAG, "feishu on core %d, PSRAM stack=%u bytes",
+             MIMI_FEISHU_POLL_CORE, (unsigned)MIMI_FEISHU_POLL_STACK);
     return ESP_OK;
 }
 

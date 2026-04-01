@@ -8,22 +8,22 @@
 #endif
 
 #ifndef MIMI_SECRET_WIFI_SSID
-#define MIMI_SECRET_WIFI_SSID       ""
+#define MIMI_SECRET_WIFI_SSID ""
 #endif
 #ifndef MIMI_SECRET_WIFI_PASS
-#define MIMI_SECRET_WIFI_PASS       ""
+#define MIMI_SECRET_WIFI_PASS ""
 #endif
 #ifndef MIMI_SECRET_TG_TOKEN
-#define MIMI_SECRET_TG_TOKEN        ""
+#define MIMI_SECRET_TG_TOKEN ""
 #endif
 #ifndef MIMI_SECRET_API_KEY
-#define MIMI_SECRET_API_KEY         ""
+#define MIMI_SECRET_API_KEY ""
 #endif
 #ifndef MIMI_SECRET_MODEL
-#define MIMI_SECRET_MODEL           ""
+#define MIMI_SECRET_MODEL ""
 #endif
 #ifndef MIMI_SECRET_MODEL_PROVIDER
-#define MIMI_SECRET_MODEL_PROVIDER  "anthropic"
+#define MIMI_SECRET_MODEL_PROVIDER "openai"
 #endif
 #ifndef MIMI_SECRET_PROXY_HOST
 #define MIMI_SECRET_PROXY_HOST      ""
@@ -38,13 +38,13 @@
 #define MIMI_SECRET_SEARCH_KEY      ""
 #endif
 #ifndef MIMI_SECRET_FEISHU_APP_ID
-#define MIMI_SECRET_FEISHU_APP_ID   ""
+#define MIMI_SECRET_FEISHU_APP_ID ""
 #endif
 #ifndef MIMI_SECRET_FEISHU_APP_SECRET
 #define MIMI_SECRET_FEISHU_APP_SECRET ""
 #endif
 #ifndef MIMI_SECRET_TAVILY_KEY
-#define MIMI_SECRET_TAVILY_KEY      ""
+#define MIMI_SECRET_TAVILY_KEY ""
 #endif
 
 /* WiFi */
@@ -83,13 +83,13 @@
 #define MIMI_TIMEZONE                "PST8PDT,M3.2.0,M11.1.0"
 
 /* LLM */
-#define MIMI_LLM_DEFAULT_MODEL       "claude-opus-4-5"
-#define MIMI_LLM_PROVIDER_DEFAULT    "anthropic"
-#define MIMI_LLM_MAX_TOKENS          4096
-#define MIMI_LLM_API_URL             "https://api.anthropic.com/v1/messages"
-#define MIMI_OPENAI_API_URL          "https://api.openai.com/v1/chat/completions"
-#define MIMI_LLM_API_VERSION         "2023-06-01"
-#define MIMI_LLM_STREAM_BUF_SIZE     (32 * 1024)
+#define MIMI_LLM_DEFAULT_MODEL "minimax/MiniMax-M2.1"
+#define MIMI_LLM_PROVIDER_DEFAULT "openai"
+#define MIMI_LLM_MAX_TOKENS 4096
+#define MIMI_LLM_API_URL "https://api.minimax.chat/v1/chat/completions"
+#define MIMI_OPENAI_API_URL "https://api.minimax.chat/v1/chat/completions"
+#define MIMI_LLM_API_VERSION "2023-06-01"
+#define MIMI_LLM_STREAM_BUF_SIZE (32 * 1024)
 #define MIMI_LLM_LOG_VERBOSE_PAYLOAD 0
 #define MIMI_LLM_LOG_PREVIEW_BYTES   160
 
@@ -100,15 +100,15 @@
 #define MIMI_OUTBOUND_CORE           0
 
 /* Memory / SPIFFS */
-#define MIMI_SPIFFS_BASE             "/spiffs"
-#define MIMI_SPIFFS_CONFIG_DIR       MIMI_SPIFFS_BASE "/config"
-#define MIMI_SPIFFS_MEMORY_DIR       MIMI_SPIFFS_BASE "/memory"
-#define MIMI_SPIFFS_SESSION_DIR      MIMI_SPIFFS_BASE "/sessions"
-#define MIMI_MEMORY_FILE             MIMI_SPIFFS_MEMORY_DIR "/MEMORY.md"
-#define MIMI_SOUL_FILE               MIMI_SPIFFS_CONFIG_DIR "/SOUL.md"
-#define MIMI_USER_FILE               MIMI_SPIFFS_CONFIG_DIR "/USER.md"
-#define MIMI_CONTEXT_BUF_SIZE        (16 * 1024)
-#define MIMI_SESSION_MAX_MSGS        20
+#define MIMI_SPIFFS_BASE "/sdcard"
+#define MIMI_SPIFFS_CONFIG_DIR MIMI_SPIFFS_BASE "/config"
+#define MIMI_SPIFFS_MEMORY_DIR MIMI_SPIFFS_BASE "/memory"
+#define MIMI_SPIFFS_SESSION_DIR MIMI_SPIFFS_BASE "/sessions"
+#define MIMI_MEMORY_FILE MIMI_SPIFFS_MEMORY_DIR "/MEMORY.md"
+#define MIMI_SOUL_FILE MIMI_SPIFFS_CONFIG_DIR "/SOUL.md"
+#define MIMI_USER_FILE MIMI_SPIFFS_CONFIG_DIR "/USER.md"
+#define MIMI_CONTEXT_BUF_SIZE (16 * 1024)
+#define MIMI_SESSION_MAX_MSGS 20
 
 /* Cron / Heartbeat */
 #define MIMI_CRON_FILE               MIMI_SPIFFS_BASE "/cron.json"

@@ -1,6 +1,9 @@
 idf_component_register(
     SRCS
         "mimi.c"
+        "lcd.c"
+        "tfcard.c"
+        "font.c"
         "bus/message_bus.c"
         "wifi/wifi_manager.c"
         "channels/telegram/telegram_bot.c"
@@ -21,13 +24,31 @@ idf_component_register(
         "tools/tool_get_time.c"
         "tools/tool_files.c"
         "tools/tool_gpio.c"
+	    "tools/tool_ws2812.c"
+        "tools/tool_notice.c"
         "tools/gpio_policy.c"
         "skills/skill_loader.c"
         "onboard/wifi_onboard.c"
+        "pic_decoder/gif/gifdec.c"
+        "pic_decoder/gif/lvgl_gif.c"
+        "pic_decoder/jpg/jpeg_to_image.c"
+        "pic_decoder/jpg/image_to_jpeg.c"
+        "k10_ui/page_local.c"
+        "k10_ui/page_online.c"
+        "k10_ui/page_conf.c"
+        "k10_ui/page_notice.c"
+	    "k10_ui/data/device_data.c"
+        "k10_ui/data/device_data_json.c"
+        "circular_strip.c"
     INCLUDE_DIRS
         "."
+        "pic_decoder/gif"
+        "pic_decoder/jpg"
+        "pic_decoder/png"
+        "k10_ui"
     REQUIRES
         nvs_flash esp_wifi esp_netif esp_http_client esp_http_server
         esp_https_ota esp_event json spiffs console vfs app_update esp-tls
-        esp_timer esp_websocket_client esp_driver_gpio
+        esp_timer esp_websocket_client esp_driver_gpio led_strip
+        fatfs sdmmc vfs esp_driver_sdspi
 )
