@@ -44,7 +44,6 @@ idf_component_register(
         "."
         "pic_decoder/gif"
         "pic_decoder/jpg"
-        "pic_decoder/png"
         "k10_ui"
     REQUIRES
         nvs_flash esp_wifi esp_netif esp_http_client esp_http_server
