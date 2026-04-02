@@ -8,27 +8,27 @@
 - 支持 5 种 agent 状态：idle/researching/waiting/working/error
 - 线程安全，支持多 agent 同时调用
 - POST 异常安全，不影响主程序
+- 设置桌宠的IP地址
 
 ## 支持的状态
 
-| 状态          | 动画        | 说明      |
-| ------------- | ----------- | --------- |
-| `idle`        | sleep       | 空闲/待命 |
-| `researching` | thinking    | 调研/思考 |
-| `waiting`     | look_around | 等待      |
-| `working`     | typing      | 工作/处理 |
-| `error`       | alarm       | 错误/报警 |
+| 状态 | 动画 | 说明 |
+|------|------|------|
+| `idle` | sleep | 空闲/待命 |
+| `researching` | thinking | 调研/思考 |
+| `waiting` | look_around | 等待 |
+| `working` | typing | 工作/处理 |
+| `error` | alarm | 错误/报警 |
 
 ## 安装方法
 
 ### 通过 下载文件 安装
 
 ```bash
- mkdir ~/.openclaw/skills/desktop_pet
- cd ~/.openclaw/skills/desktop_pet
- wget https://github.com/DFRobot/mimiclaw/blob/main/openclaw_skills_channels/SKILL.md
- wget https://github.com/DFRobot/mimiclaw/blob/main/openclaw_skills_channels/desktop_pet_skill.py
- wget https://github.com/DFRobot/mimiclaw/blob/main/openclaw_skills_channels/push_helper.py
+mkdir -p ~/.openclaw/skills/desktop_pet
+wget -O ~/.openclaw/skills/desktop_pet/SKILL.md https://raw.githubusercontent.com/DFRobot/mimiclaw/main/openclaw_skills_channels/SKILL.md
+wget -O ~/.openclaw/skills/desktop_pet/desktop_pet_skill.py https://raw.githubusercontent.com/DFRobot/mimiclaw/main/openclaw_skills_channels/desktop_pet_skill.py
+wget -O ~/.openclaw/skills/desktop_pet/push_helper.py https://raw.githubusercontent.com/DFRobot/mimiclaw/main/openclaw_skills_channels/push_helper.py
 ```
 
 确保已安装依赖：
@@ -88,21 +88,35 @@ push_multiple([
 
 ## 配置
 
-### 环境变量
+### 配置文件（推荐）
 
-| 变量                      | 默认值              | 说明           |
-| ------------------------- | ------------------- | -------------- |
-| `DESKTOP_PET_SERVER`      | http://127.0.0.1:80 | 生产服务器地址 |
-| `DESKTOP_PET_TEST_SERVER` | http://127.0.0.1:80 | 测试服务器地址 |
+桌宠配置存储在 `~/.openclaw/runtime/desktop_pet.json`：
 
-### 服务器地址设置
+```json
+{
+  "endpoint": "http://192.168.0.113:80/status"
+}
+```
+
+**命令行操作：**
+
+```bash
+# 查看当前端点
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py get
+
+# 只改IP（自动加端口80）
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py set --ip 192.168.1.138
+
+# 改IP+端口
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py set --ip 192.168.1.138 --port 8080
+
+# 直接设置完整端点
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py set --endpoint http://192.168.1.138:80/status
+```
+
+### 代码动态设置（可选）
 
 ```python
-# 方式1：环境变量
-import os
-os.environ["DESKTOP_PET_SERVER"] = "http://192.168.1.100"
-
-# 方式2：代码动态设置
 pet = DesktopPet()
 pet.set_server("http://192.168.1.100")
 ```
@@ -205,15 +219,15 @@ python3 ~/.openclaw/skills/desktop_pet/push_helper.py 太子 error "任务执行
 
 ### 状态 → 动画映射
 
-| 状态          | 桌宠动画    |
-| ------------- | ----------- |
-| `idle`        | sleep       |
-| `researching` | thinking    |
-| `waiting`     | look_around |
-| `working`     | typing      |
-| `error`       | alarm       |
-
+| 状态 | 桌宠动画 |
+|------|---------|
+| `idle` | sleep |
+| `researching` | thinking |
+| `waiting` | look_around |
+| `working` | typing |
+| `error` | alarm |
 ```
+
 ## HEARTBEAT.md 修改方法
 
 心跳检查中集成 desktop_pet 状态监控，在 HEARTBEAT.md 中添加相应的监控任务。
@@ -248,7 +262,6 @@ desktop_pet/
 - Python 3.7+
 - requests
 
-
 ---
 
 ## QQBot Webhook 集成（可选）
@@ -264,18 +277,21 @@ desktop_pet/
 | `src/gateway.ts` | 修改 | 上线/离线/收/发消息通知 |
 | `src/proactive.ts` | 修改 | 主动消息通知 |
 
-### 步骤 1：创建 webhook 模块
+### 步骤 1：创建 webhook 模块（配置文件版本）
 
 新建文件 `src/utils/desktop-pet-webhook.ts`：
 
 ```typescript
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
 /**
- * 向桌面宠物/状态服务上报：读取环境变量 DESKTOP_PET_SERVER（主机或完整 URL，不含路径），
- * POST 到 {base}/status，Content-Type: application/json。
- * 未设置环境变量时不发起请求。
+ * 向桌面宠物/状态服务上报：每次发送前读取 ~/.openclaw/runtime/desktop_pet.json
+ * 中的 endpoint 字段作为 POST 地址。未配置或读取失败时不发起请求。
  */
 
-const ENV_DESKTOP_PET_SERVER = "DESKTOP_PET_SERVER";
+const DESKTOP_PET_CONFIG_FILE = path.join(os.homedir(), ".openclaw", "runtime", "desktop_pet.json");
 const MAX_MESSAGE_CHARS = 1800;
 
 function truncateForWebhook(text: string): string {
@@ -287,15 +303,17 @@ function truncateForWebhook(text: string): string {
 }
 
 function resolveStatusUrl(): string | null {
-  const raw = process.env[ENV_DESKTOP_PET_SERVER]?.trim();
-  if (!raw) {
+  try {
+    const raw = fs.readFileSync(DESKTOP_PET_CONFIG_FILE, "utf8");
+    const parsed = JSON.parse(raw) as { endpoint?: unknown };
+    const endpoint = typeof parsed.endpoint === "string" ? parsed.endpoint.trim() : "";
+    if (!endpoint) {
+      return null;
+    }
+    return endpoint;
+  } catch {
     return null;
   }
-  let base = raw.replace(/\/+$/, "");
-  if (!/^https?:\/\//i.test(base)) {
-    base = `http://${base}`;
-  }
-  return `${base}/status`;
 }
 
 type DesktopPetChannelEntry =
@@ -326,12 +344,12 @@ export function notifyDesktopPetQQOffline(): void {
   postDesktopPet({ channels: [{ name: "QQ", status: "offline" }] });
 }
 
-/** 收到 QQ 消息 → JSON 字段 in_message（仅用户可见正文） */
+/** 收到 QQ 消息 → JSON 字段 in_message */
 export function notifyDesktopPetQQInMessage(inMessage: string): void {
   postDesktopPet({ channels: [{ name: "QQ", in_message: truncateForWebhook(inMessage) }] });
 }
 
-/** 机器人发往 QQ 的文案 → JSON 字段 out_message（无地址前缀） */
+/** 机器人发往 QQ 的文案 → JSON 字段 out_message */
 export function notifyDesktopPetQQOutbound(outMessage: string): void {
   postDesktopPet({ channels: [{ name: "QQ", out_message: truncateForWebhook(outMessage) }] });
 }
@@ -408,14 +426,30 @@ notifyDesktopPetQQOutbound(imageUrl ? `[图片] ${text}` : text);
 notifyDesktopPetQQOutbound(text);
 ```
 
-### 环境变量配置
+### 配置文件方式（推荐）
 
-启动 OpenClaw 时设置环境变量：
+桌宠配置存储在 `~/.openclaw/runtime/desktop_pet.json`：
+
+```json
+{
+  "endpoint": "http://192.168.0.113:80/status"
+}
+```
+
+**命令行操作：**
 
 ```bash
-export DESKTOP_PET_SERVER=http://192.168.1.100:80
-# 或
-export DESKTOP_PET_SERVER=http://your-server-ip
+# 查看当前端点
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py get
+
+# 只改IP（自动加端口80）
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py set --ip 192.168.1.138
+
+# 改IP+端口
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py set --ip 192.168.1.138 --port 8080
+
+# 直接设置完整端点
+python3 ~/.openclaw/skills/desktop_pet/push_helper.py set --endpoint http://192.168.1.138:80/status
 ```
 
 ### 通知 JSON 格式
@@ -432,6 +466,7 @@ export DESKTOP_PET_SERVER=http://your-server-ip
   ]
 }
 ```
+
 
 
 ## 许可证

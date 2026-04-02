@@ -1,10 +1,13 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
 /**
- * 向桌面宠物/状态服务上报：读取环境变量 DESKTOP_PET_SERVER（主机或完整 URL，不含路径），
- * POST 到 {base}/status，Content-Type: application/json。
- * 未设置环境变量时不发起请求。
+ * 向桌面宠物/状态服务上报：每次发送前读取 ~/.openclaw/runtime/desktop_pet.json
+ * 中的 endpoint 字段作为 POST 地址。未配置或读取失败时不发起请求。
  */
 
-const ENV_DESKTOP_PET_SERVER = "DESKTOP_PET_SERVER";
+const DESKTOP_PET_CONFIG_FILE = path.join(os.homedir(), ".openclaw", "runtime", "desktop_pet.json");
 const MAX_MESSAGE_CHARS = 1800;
 
 function truncateForWebhook(text: string): string {
@@ -16,15 +19,17 @@ function truncateForWebhook(text: string): string {
 }
 
 function resolveStatusUrl(): string | null {
-  const raw = process.env[ENV_DESKTOP_PET_SERVER]?.trim();
-  if (!raw) {
+  try {
+    const raw = fs.readFileSync(DESKTOP_PET_CONFIG_FILE, "utf8");
+    const parsed = JSON.parse(raw) as { endpoint?: unknown };
+    const endpoint = typeof parsed.endpoint === "string" ? parsed.endpoint.trim() : "";
+    if (!endpoint) {
+      return null;
+    }
+    return endpoint;
+  } catch {
     return null;
   }
-  let base = raw.replace(/\/+$/, "");
-  if (!/^https?:\/\//i.test(base)) {
-    base = `http://${base}`;
-  }
-  return `${base}/status`;
 }
 
 type DesktopPetChannelEntry =
